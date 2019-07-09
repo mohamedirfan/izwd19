@@ -1,0 +1,61 @@
+NYSE|CLI|2009-12-31|35.39
+
+mysql -u root -p
+password: root
+
+mysql
+create database stock;
+use stock;
+
+create table stockexchange(id integer,exchang varchar(100),company varchar(100),dt date,value float(10,3));
+insert into stock.stockexchange values(1,'NYSE','CLI','2019-01-01',35.39),(2,'NYSE','WAG','2019-01-01',24.39),(3,'NYSE','WMT','2019-01-01',145.31),(4,'NYSE','INT','2019-01-01',288.19);
+
+sqoop import --connect jdbc:mysql://localhost/stock --username root --password root --query "select id,exchang,company,value from stockexchange where dt>='2019-01-01' and \$CONDITIONS" --hive-import --hive-overwrite --hive-table stock.managed_stockexchange -m 1 --fields-terminated-by ',' --target-dir /user/hduser/stockexchange
+
+hive> create database stock;
+
+use stock;
+drop table ext_stockexchange;
+
+create table stock.ext_stockexchange (id int,ver int,exchang string,company string,value double)
+row format delimited fields terminated by ','
+location '/user/hduser/stockexchangedata';
+
+SLOWLY CHANGING DIMENSION 1
+***************************
+hive
+
+insert into table ext_stockexchange select * from ext_stockexchange where id not in (select id from managed_stockexchange) union select id,1,exchang,company,value from stock.managed_stockexchange;
+
+mysql
+
+insert into stock.stockexchange values(3,'NYSE','WMT','2019-01-03',147.51),(4,'NYSE','INT','2019-01-04',283.77);
+
+sqoop import --connect jdbc:mysql://localhost/stock --username root --password root --query "select id,exchang,company,value from stockexchange where dt>='2019-01-02' and \$CONDITIONS" --hive-import --hive-overwrite --hive-table stock.managed_stockexchange -m 1 --fields-terminated-by ',' --target-dir /user/hduser/stockexchange
+
+select a.* from ext_stockexchange a left outer join managed_stockexchange b on a.id =b.id and b.id is null union select id,1,exchang,company,value from stock.managed_stockexchange;
+
+insert overwrite table ext_stockexchange select * from ext_stockexchange where id not in (select id from managed_stockexchange) union select id,1,exchang,company,value from stock.managed_stockexchange;
+
+SLOWLY CHANGING DIMENSION 2
+***************************
+
+sqoop import --connect jdbc:mysql://localhost/stock --username root --password root --query "select id,exchang,company,value from stockexchange where dt>='2019-01-03' and \$CONDITIONS" --hive-import --hive-overwrite --hive-table stock.managed_stockexchange -m 1 --fields-terminated-by ',' --target-dir /user/hduser/stockexchange
+
+mysql
+
+insert into stock.stockexchange values(3,'NYSE','WMT','2019-01-04',157.81),(5,'NYSE','INT','2019-01-04',83.77);
+
+insert overwrite table ext_stockexchange
+select a.id,coalesce(b.ver1+row_number() over(partition by a.id),row_number() over(partition by a.id)) as ver,a.exchang,a.company,a.value from managed_stockexchange a
+left outer join (select id,max(ver) as ver1 from ext_stockexchange  group by id) as b on a.id=b.id
+union
+select id,ver,exchang,company,value from ext_stockexchange;
+
+
+
+select a.id,coalesce(row_number() over()),exchang,company,value from managed_stockexchange a right join ext_stockexchange b on a.id=b.id where b.id is not null union 
+
+
+
+
