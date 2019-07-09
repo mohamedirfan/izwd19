@@ -3,6 +3,8 @@ NYSE|CLI|2009-12-31|35.39
 mysql -u root -p
 password: root
 
+
+added a line of code
 mysql
 create database stock;
 use stock;
